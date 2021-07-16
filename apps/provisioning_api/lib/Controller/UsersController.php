@@ -801,6 +801,13 @@ class UsersController extends AUserData {
 						$quota = \OCP\Util::humanFileSize($quota);
 					}
 				}
+				// no else block because quota can be set to 'none' in previous if
+				if ($quota === 'none') {
+					$allowUnlimitedQuota = $this->config->getAppValue('files', 'allow_unlimited_quota', '1') === '1';
+					if (!$allowUnlimitedQuota) {
+						throw new OCSException('Invalid quota value '.$value, 102);
+					}
+				}
 				$targetUser->setQuota($quota);
 				break;
 			case 'password':
