@@ -798,6 +798,10 @@ class UsersController extends AUserData {
 					if ($quota === -1) {
 						$quota = 'none';
 					} else {
+						$maxQuota = (int) $this->config->getAppValue('files', 'max_quota', '-1');
+						if ($maxQuota !== -1 && $quota > $maxQuota) {
+							throw new OCSException('Invalid quota value '.$value, 102);
+						}
 						$quota = \OCP\Util::humanFileSize($quota);
 					}
 				}
