@@ -243,8 +243,12 @@ class UsersController extends Controller {
 
 		/* QUOTAS PRESETS */
 		$quotaPreset = $this->parseQuotaPreset($this->config->getAppValue('files', 'quota_preset', '1 GB, 5 GB, 10 GB'));
-		$defaultQuota = $this->config->getAppValue('files', 'default_quota', 'none');
 		$allowUnlimitedQuota = $this->config->getAppValue('files', 'allow_unlimited_quota', '1') === '1';
+		if (!$allowUnlimitedQuota && count($quotaPreset) > 0) {
+			$defaultQuota = $this->config->getAppValue('files', 'default_quota', $quotaPreset[0]);
+		} else {
+			$defaultQuota = $this->config->getAppValue('files', 'default_quota', 'none');
+		}
 
 		$event = new BeforeTemplateRenderedEvent();
 		$this->dispatcher->dispatch('OC\Settings\Users::loadAdditionalScripts', $event);
