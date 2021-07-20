@@ -44,7 +44,7 @@ class Hooks {
 			\OC::$server->getUserManager(),
 			$params['uid'],
 			\OC::$server->query(IEventDispatcher::class),
-			\OC::$server->getLogger()
+			\OC::$server->get(LoggerInterface::class)
 		);
 
 		$manager->removeUserShares($params['uid']);

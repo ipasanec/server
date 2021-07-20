@@ -99,7 +99,7 @@ class Application extends App {
 				$server->getUserManager(),
 				$uid,
 				$server->query(IEventDispatcher::class),
-				$server->getLogger()
+				$server->get(LoggerInterface::class)
 			);
 		});
 
