@@ -29,12 +29,18 @@ use OCA\DAV\Traits\PrincipalProxyTrait;
 use OCP\Calendar\Resource\IResourceMetadata;
 use OCP\Calendar\Room\IRoomMetadata;
 use OCP\DB\Exception;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\IGroupManager;
 use OCP\ILogger;
 use OCP\IUserSession;
 use Sabre\DAV\PropPatch;
 use Sabre\DAVACL\PrincipalBackend\BackendInterface;
+use function array_intersect;
+use function array_map;
+use function array_merge;
+use function array_unique;
+use function array_values;
 
 abstract class AbstractPrincipalBackend implements BackendInterface {
 
@@ -67,15 +73,6 @@ abstract class AbstractPrincipalBackend implements BackendInterface {
 
 	/** @var string */
 	private $cuType;
-
-	/** @var array */
-	private $capacityFields = [
-		IRoomMetadata::CAPACITY,
-		IResourceMetadata::VEHICLE_SEATING_CAPACITY
-	];
-
-	/** @var string */
-	public $roomFeatureQueryParam = null;
 
 	/**
 	 * @param IDBConnection $dbConnection
@@ -314,27 +311,17 @@ abstract class AbstractPrincipalBackend implements BackendInterface {
 					], 'anyof');
 					break;
 
-				case '{http://nextcloud.com/ns}room-features':
-					$rowsByMetadata = $this->searchPrincipalsByMetadataKey('{http://nextcloud.com/ns}room-features', str_replace(',', '%', $value));
-					$filteredRows = array_filter($rowsByMetadata, function ($row) use ($usersGroups) {
-						return $this->isAllowedToAccessResource($row, $usersGroups);
-					});
+				case IRoomMetadata::FEATURES:
+					$results[] = $this->searchPrincipalsByRoomFeature($prop, $value);
+					break;
 
-					$results[] = array_map(function ($row): string {
-						return $row['uri'];
-					}, $filteredRows);
+				case IRoomMetadata::CAPACITY:
+				case IResourceMetadata::VEHICLE_SEATING_CAPACITY:
+					$results[] = $this->searchPrincipalsByCapacity($prop,$value);
 					break;
 
 				default:
-					$rowsByMetadata = $this->searchPrincipalsByMetadataKey($prop, $value);
-					$filteredRows = array_filter($rowsByMetadata, function ($row) use ($usersGroups) {
-						return $this->isAllowedToAccessResource($row, $usersGroups);
-					});
-
-					$results[] = array_map(function ($row): string {
-						return $row['uri'];
-					}, $filteredRows);
-
+					$results[] = $this->searchPrincipalsByMetadataKey($prop, $value, $usersGroups);
 					break;
 			}
 		}
@@ -351,10 +338,20 @@ abstract class AbstractPrincipalBackend implements BackendInterface {
 
 			case 'allof':
 			default:
-				// this is kind of BS but array_intersect was removing all values no matter if they were correct or not.
-				// @TODO find a way to determine which values are correct that doesn't kill the room/resource query results.
-				return array_values(array_merge(...$results));
+				return array_values(array_intersect(...$results));
 		}
+	}
+
+	/**
+	 * @param string $key
+	 * @return IQueryBuilder
+	 */
+	private function getMetadataQuery(string $key): IQueryBuilder {
+		$query = $this->db->getQueryBuilder();
+		$query->select([$this->dbForeignKeyName])
+			->from($this->dbMetaDataTableName)
+			->where($query->expr()->eq('key', $query->createNamedParameter($key)));
+		return $query;
 	}
 
 	/**
@@ -365,32 +362,64 @@ abstract class AbstractPrincipalBackend implements BackendInterface {
 	 *
 	 * @param $key
 	 * @param $value
+	 * @param array $usersGroups
 	 * @return array
 	 */
-	private function searchPrincipalsByMetadataKey($key, $value):array {
-		$query = $this->db->getQueryBuilder();
-		$query->select([$this->dbForeignKeyName])
-			->from($this->dbMetaDataTableName)
-			->where($query->expr()->eq('key', $query->createNamedParameter($key)));
+	private function searchPrincipalsByMetadataKey($key, $value, $usersGroups = []):array {
+		$query = $this->getMetadataQuery($key);
+		$query->andWhere($query->expr()->iLike('value', $query->createNamedParameter('%' . $this->db->escapeLikeParameter($value) . '%')));
+		return $this->getRows($query, $usersGroups);
+	}
 
-		if(in_array($key, $this->capacityFields, true)){
-			$query->andWhere($query->expr()->gte('value', $query->createNamedParameter($value)));
+	/**
+	 * Searches principals based on room features
+	 * e.g.:
+	 * '{http://nextcloud.com/ns}room-features' => 'TV,PROJECTOR'
+	 *
+	 * @param $key
+	 * @param $value
+	 * @param array $usersGroups
+	 * @return array
+	 */
+	private function searchPrincipalsByRoomFeature($key, $value, $usersGroups = []): array {
+		$query = $this->getMetadataQuery($key);
+		foreach (explode(',', $value) as $v) {
+			$query->andWhere($query->expr()->iLike('value', $query->createNamedParameter('%' . $this->db->escapeLikeParameter($v) . '%')));
 		}
-		else {
-			$query->andWhere($query->expr()->iLike('value', $query->createNamedParameter('%' . $this->db->escapeLikeParameter($value) . '%')));
-		}
+		return $this->getRows($query, $usersGroups);
+	}
 
+	/**
+	 * Searches principals based on room seating capacity or vehicle capacity
+	 * e.g.:
+	 * '{http://nextcloud.com/ns}room-seating-capacity' => '100'
+	 *
+	 * @param $key
+	 * @param $value
+	 * @param array $usersGroups
+	 * @return array
+	 */
+	private function searchPrincipalsByCapacity($key, $value, $usersGroups = []):array {
+		$query = $this->getMetadataQuery($key);
+		$query->andWhere($query->expr()->gte('value', $query->createNamedParameter($value)));
+		return $this->getRows($query, $usersGroups);
+	}
+
+	/**
+	 * @param $query
+	 * @param $usersGroups
+	 * @return array
+	 */
+	private function getRows($query, $usersGroups):array {
 		try {
 			$stmt = $query->executeQuery();
-		} catch (Exception $e){
+		} catch (Exception $e) {
 			$this->logger->error($e->getMessage());
 		}
 
 		$rows = [];
 		while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
-			$id = $row[$this->dbForeignKeyName];
-
-			$principalRow = $this->getPrincipalById($id);
+			$principalRow = $this->getPrincipalById($row[$this->dbForeignKeyName]);
 			if (!$principalRow) {
 				continue;
 			}
@@ -398,13 +427,22 @@ abstract class AbstractPrincipalBackend implements BackendInterface {
 			$rows[] = $principalRow;
 		}
 
-		return $rows;
+		$stmt->closeCursor();
+
+		$filteredRows = array_filter($rows, function ($row) use ($usersGroups) {
+			return $this->isAllowedToAccessResource($row, $usersGroups);
+		});
+
+		return array_map(static function ($row): string {
+			return $row['uri'];
+		}, $filteredRows);
 	}
 
 	/**
 	 * @param string $uri
 	 * @param string $principalPrefix
 	 * @return null|string
+	 * @throws Exception
 	 */
 	public function findByUri($uri, $principalPrefix) {
 		$user = $this->userSession->getUser();
@@ -468,7 +506,7 @@ abstract class AbstractPrincipalBackend implements BackendInterface {
 	 *
 	 * @param String[] $row
 	 * @param String[] $metadata
-	 * @return Array
+	 * @return array
 	 */
 	private function rowToPrincipal(array $row, array $metadata = []):array {
 		return array_merge([
@@ -480,8 +518,8 @@ abstract class AbstractPrincipalBackend implements BackendInterface {
 	}
 
 	/**
-	 * @param $row
-	 * @param $userGroups
+	 * @param array $row
+	 * @param array $userGroups
 	 * @return bool
 	 */
 	private function isAllowedToAccessResource(array $row, array $userGroups):bool {
