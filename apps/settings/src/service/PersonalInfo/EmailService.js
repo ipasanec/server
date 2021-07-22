@@ -25,13 +25,13 @@ import { getCurrentUser } from '@nextcloud/auth'
 import { generateOcsUrl } from '@nextcloud/router'
 import confirmPassword from '@nextcloud/password-confirmation'
 
-import { ACCOUNT_PROPERTY_ENUM, SCOPE_SUFFIX } from '../constants/AccountPropertyConstants'
+import { ACCOUNT_PROPERTY_ENUM, SCOPE_SUFFIX } from '../../constants/AccountPropertyConstants'
 
 /**
  * Save the primary email of the user
  *
  * @param {string} email the primary email
- * @returns {Object}
+ * @returns {object}
  */
 export const savePrimaryEmail = async(email) => {
 	const userId = getCurrentUser().uid
@@ -54,7 +54,7 @@ export const savePrimaryEmail = async(email) => {
  * *Will be appended to the user's additional emails*
  *
  * @param {string} email the additional email
- * @returns {Object}
+ * @returns {object}
  */
 export const saveAdditionalEmail = async(email) => {
 	const userId = getCurrentUser().uid
@@ -74,7 +74,7 @@ export const saveAdditionalEmail = async(email) => {
  * Remove an additional email of the user
  *
  * @param {string} email the additional email
- * @returns {Object}
+ * @returns {object}
  */
 export const removeAdditionalEmail = async(email) => {
 	const userId = getCurrentUser().uid
@@ -95,7 +95,7 @@ export const removeAdditionalEmail = async(email) => {
  *
  * @param {string} prevEmail the additional email to be updated
  * @param {string} newEmail the new additional email
- * @returns {Object}
+ * @returns {object}
  */
 export const updateAdditionalEmail = async(prevEmail, newEmail) => {
 	const userId = getCurrentUser().uid
@@ -115,7 +115,7 @@ export const updateAdditionalEmail = async(prevEmail, newEmail) => {
  * Save the federation scope for the primary email of the user
  *
  * @param {string} scope the federation scope
- * @returns {Object}
+ * @returns {object}
  */
 export const savePrimaryEmailScope = async(scope) => {
 	const userId = getCurrentUser().uid
@@ -136,7 +136,7 @@ export const savePrimaryEmailScope = async(scope) => {
  *
  * @param {string} email the additional email
  * @param {string} scope the federation scope
- * @returns {Object}
+ * @returns {object}
  */
 export const saveAdditionalEmailScope = async(email, scope) => {
 	const userId = getCurrentUser().uid
