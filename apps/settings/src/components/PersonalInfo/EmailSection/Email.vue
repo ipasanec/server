@@ -40,12 +40,16 @@
 					<span v-else-if="showErrorIcon" class="icon-error" />
 				</transition>
 
-				<FederationControl v-if="!primary"
-					class="federation-control"
-					:disabled="federationDisabled"
-					:email="email"
-					:scope.sync="localScope"
-					@update:scope="onScopeChange" />
+				<template v-if="!primary">
+					<FederationControl
+						:account-property="accountProperty"
+						:additional="true"
+						:additional-value="email"
+						:disabled="federationDisabled"
+						:handle-scope-change="handleAdditionalScopeChange"
+						:scope.sync="localScope"
+						@update:scope="onScopeChange" />
+				</template>
 
 				<Actions
 					class="actions-email"
@@ -75,8 +79,10 @@ import ActionButton from '@nextcloud/vue/dist/Components/ActionButton'
 import { showError } from '@nextcloud/dialogs'
 import debounce from 'debounce'
 
-import FederationControl from './FederationControl'
-import { savePrimaryEmail, saveAdditionalEmail, updateAdditionalEmail, removeAdditionalEmail } from '../../../service/PersonalInfoService'
+import FederationControl from '../shared/FederationControl'
+
+import { ACCOUNT_PROPERTY_READABLE_ENUM } from '../../../constants/AccountPropertyConstants'
+import { savePrimaryEmail, saveAdditionalEmail, saveAdditionalEmailScope, updateAdditionalEmail, removeAdditionalEmail } from '../../../service/PersonalInfo/EmailService'
 
 export default {
 	name: 'Email',
@@ -92,22 +98,24 @@ export default {
 			type: String,
 			required: true,
 		},
-		scope: {
-			type: String,
-			required: true,
+		index: {
+			type: Number,
+			default: 0,
 		},
 		primary: {
 			type: Boolean,
 			default: false,
 		},
-		index: {
-			type: Number,
-			default: 0,
+		scope: {
+			type: String,
+			required: true,
 		},
 	},
 
 	data() {
 		return {
+			accountProperty: ACCOUNT_PROPERTY_READABLE_ENUM.EMAIL,
+			handleAdditionalScopeChange: saveAdditionalEmailScope,
 			initialEmail: this.email,
 			localScope: this.scope,
 			showCheckmarkIcon: false,
@@ -116,24 +124,6 @@ export default {
 	},
 
 	computed: {
-		inputName() {
-			if (this.primary) {
-				return 'email'
-			}
-			return 'additionalEmail[]'
-		},
-
-		inputPlaceholder() {
-			if (this.primary) {
-				return t('settings', 'Your email address')
-			}
-			return t('settings', 'Additional email address {index}', { index: this.index + 1 })
-		},
-
-		federationDisabled() {
-			return !this.initialEmail
-		},
-
 		deleteDisabled() {
 			if (this.primary) {
 				return this.email === ''
@@ -147,6 +137,24 @@ export default {
 			}
 			return t('settings', 'Delete email')
 		},
+
+		federationDisabled() {
+			return !this.initialEmail
+		},
+
+		inputName() {
+			if (this.primary) {
+				return 'email'
+			}
+			return 'additionalEmail[]'
+		},
+
+		inputPlaceholder() {
+			if (this.primary) {
+				return t('settings', 'Your email address')
+			}
+			return t('settings', 'Additional email address {index}', { index: this.index + 1 })
+		},
 	},
 
 	mounted() {
@@ -157,7 +165,7 @@ export default {
 
 	methods: {
 		onEmailChange(e) {
-			this.$emit('update:email', e.target.value)
+			this.$emit('update:email', e.target.value.trim())
 			// $nextTick() ensures that references to this.email further down the chain give the correct non-outdated value
 			this.$nextTick(() => this.debounceEmailChange())
 		},
@@ -227,10 +235,6 @@ export default {
 			}
 		},
 
-		isValid() {
-			return /^\S+$/.test(this.email)
-		},
-
 		handleDeleteAdditionalEmail(status) {
 			if (status === 'ok') {
 				this.$emit('deleteAdditionalEmail')
@@ -251,6 +255,10 @@ export default {
 				this.showErrorIcon = true
 				setTimeout(() => { this.showErrorIcon = false }, 2000)
 			}
+		},
+
+		isValid() {
+			return /^\S+$/.test(this.email)
 		},
 
 		onScopeChange(scope) {
@@ -293,17 +301,6 @@ export default {
 				}
 			}
 
-			.federation-control {
-				&::v-deep button {
-					// TODO remove this hack
-					padding-bottom: 7px;
-					height: 30px !important;
-					min-height: 30px !important;
-					width: 30px !important;
-					min-width: 30px !important;
-				}
-			}
-
 			.icon-checkmark,
 			.icon-error {
 				height: 30px !important;
@@ -317,16 +314,16 @@ export default {
 		}
 	}
 
+	.fade-enter,
+	.fade-leave-to {
+		opacity: 0;
+	}
+
 	.fade-enter-active {
 		transition: opacity 200ms ease-out;
 	}
 
 	.fade-leave-active {
 		transition: opacity 300ms ease-out;
-	}
-
-	.fade-enter,
-	.fade-leave-to {
-		opacity: 0;
 	}
 </style>
